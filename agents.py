@@ -1,4 +1,6 @@
 import os
+import pdb
+
 import autogen
 import random
 from scipy.stats import poisson, binom
@@ -59,15 +61,18 @@ executor_config['functions'] = [
     #     }
     # },
     {
-        "name": "generate_image",
+        "name": "generate_image_and_save",
         "description": "Sends a given prompt and an optional style to Stable Diffusion to generate a corresponding image. Saves the image to an appropraite filename png and returns that filename",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Prompt to send to Stable Diffusion to generate an image."},
+                "name" : {"type": "string", "description": "Name of the lifeform."},
+                "taxonomy": {"type": "string", "description": "Taxonomy of the lifeform"},
+                "description": {"type": "string", "description": "Description of the lifeform."},
                 "filename_prefix": {"type": "string", "description": "Appropriate and unique filename prefix for generated image."}
             },
-            "required": ["prompt", "filename_prefix"]
+            "required": ["prompt", "name", "taxonomy", "description", "filename_prefix"]
         }
     },
     {
@@ -83,17 +88,10 @@ executor_config['functions'] = [
             "required": ["current_log", "round_number", "days_in_round"]
         }
     },
-    {
-        "name": "load_history",
-        "description": "Loads the history of the simulation starting at fiver rounds before the provided round number.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "round_number": {"type": "number", "description": "The round number from which the history will be loaded from ten rounds before to the round number."}
-            },
-            "required": ["round_number"]
-        }
-    },
+#    {
+#        "name": "load_history",
+#        "description": "Loads the history of the last five rounds of simualtion. Critical for initializing the simulation.",
+#    },
     {
         "name": "random_integer",
         "description": "Generates a list of random integers from a uniform distribution.",
@@ -157,20 +155,20 @@ executor_config['functions'] = [
             "required": ["n", "p", "total_draws"]
         }
     },
-    {
-        "name": "save_lifeform",
-        "description": "Saves relevant information describing a new lifeform.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Name of the lifeform."},
-                "taxonomy": {"type": "string", "description": "The taxonomy of the lifeform."},
-                "description": {"type": "string", "description": "Detailed description of the lifeform morphology and behavior."},
-                "image_filename": {"type": "string", "description": "The filename of the image of the lifeform."}
-            },
-            "required": ["name", "taxonomy", "description", "image_filename"]
-        }
-    },
+    # {
+    #     "name": "save_lifeform",
+    #     "description": "Saves relevant information describing a new lifeform.",
+    #     "parameters": {
+    #         "type": "object",
+    #         "properties": {
+    #             "name": {"type": "string", "description": "Name of the lifeform."},
+    #             "taxonomy": {"type": "string", "description": "The taxonomy of the lifeform."},
+    #             "description": {"type": "string", "description": "Detailed description of the lifeform morphology and behavior."},
+    #             "image_filename": {"type": "string", "description": "The filename of the image of the lifeform."}
+    #         },
+    #         "required": ["name", "taxonomy", "description", "image_filename"]
+    #     }
+    # },
     {
         "name": "load_lifeform",
         "description": "Loads relevant information describing a lifeform given its name",
@@ -182,10 +180,10 @@ executor_config['functions'] = [
             "required": ["name"]
         }
     },
-    {
-        "name": "get_planet_info",
-        "description": "Get the general description of the planet before the simulation began. "
-    }
+    # {
+    #     "name": "get_planet_info",
+    #     "description": "Get the general description of the planet before the simulation began. "
+    # }
 ]
 
 # Define all the tools and their required functions
@@ -223,10 +221,13 @@ def base64_to_image(image_str):
     image = Image.open(BytesIO(base64.b64decode(image_str)))
     return image
 
-def generate_image(prompt, filename_prefix):
+def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix):
     """
     Takes a string prompt and passes it to Stable Diffusion XL to generate a PNG image. Returns the filename of the saved image
     :param prompt: string prompt to pass to Stable Diffusion
+    :param name: string name of the lifeform
+    :param taxonomy: string taxonomy of the lifeform
+    :param description: string description of the lifeform
     :param filename_prefix: string specifying a unique filename prefix that the image will be saved as.
     :return: string filename of saved image
     """
@@ -260,6 +261,7 @@ def generate_image(prompt, filename_prefix):
     )
     image = base64_to_image(response.data[0].b64_json)
     image.save(filename)
+    save_lifeform(name, taxonomy, description, filename)
     return filename
 
 def encode_image(image_path):
@@ -302,22 +304,35 @@ def save_history(current_log, round_number, days_in_round):
         outfile.write("********************\n")
     return True
 
-def load_history(round_number):
+def load_history():
     filename = os.path.join(ASSET_PATH, "history.txt")
-    cutoff = max(round_number - 5, 0)
-    foundit = False
-    history = ""
+    history_list = []
+    total_days = 0
+    open_day = False
+    round_number = 0
     with open(filename) as infile:
+        history = ""
         for line in infile.readlines():
-            if line.strip().startswith(f"***** ROUND {cutoff}"):
-                foundit = True
+            if line.strip().startswith(f"***** ROUND"):
+                rn = int(line.split()[2])
+                if rn > round_number:
+                    round_number = rn
+                total_days += 1
+                open_day = True
                 history += line.strip() + " "
-            elif foundit:
+            elif open_day and not line.startswith("********************"):
                 history += line.strip() + " "
-    return history
+            elif line.startswith("********************"):
+                history += line.strip() + " "
+                history_list.append(history)
+                history = ""
+                open_day = False
+            elif open_day:
+                history += line.strip() + " "
+    return "\n".join(history_list[-5:]), round_number
 
 def get_planet_info():
-    filename = os.path.join(ASSET_PATH, "planet.txt")
+    filename = os.path.join(ASSET_PATH, "planet_description.txt")
     with open(filename) as infile:
         planet_description = infile.read()
     return planet_description
@@ -353,7 +368,9 @@ def get_agents():
                        "Keep track of all single-cell organisms that live, die, or evolve during the simulation round. "
                        "Every time a new organism evolves, ask the Executor to generate an image and save the organism information. "
                        "At the start of the simulation, ask the Executor to load any organisms that are living based on the history. "
-                       "Your organisms may interact with each other depending on where they are on the planet."
+                       "Your organisms may interact with each other depending on where they are on the planet. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
     )
 
     multi_cell_simple = autogen.AssistantAgent(
@@ -366,7 +383,9 @@ def get_agents():
                        "Keep track of all single-cell organisms that live, die, or evolve during the simulation round. "
                        "Every time a new organism evolves, ask the Executor to generate an image and save the organism information. "
                        "At the start of the simulation, ask the Executor to load any organisms that are living based on the history. "
-                       "Your organisms may interact with each other depending on where they are on the planet."
+                       "Your organisms may interact with each other depending on where they are on the planet. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
     )
 
     multi_cell_complex = autogen.AssistantAgent(
@@ -379,14 +398,18 @@ def get_agents():
                        "Keep track of all single-cell organisms that live, die, or evolve during the simulation round. "
                        "Every time a new organism evolves, ask the Executor to generate an image and save the organism information. "
                        "At the start of the simulation, ask the Executor to load any organisms that are living based on the history. "
-                       "Your own organisms can interact with each other depending on where they are on the planet."
+                       "Your own organisms can interact with each other depending on where they are on the planet. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
     )
 
     weather = autogen.AssistantAgent(
         name="Weather",
         llm_config=gpt4_config,
         system_message="Weather. You are responsible for simulating the weather changes over the simulation round. "
-                       "Depending on the state of the simulation, you may simulate catastrophic events such as hurricanes, etc."
+                       "Depending on the state of the simulation, you may simulate catastrophic events such as hurricanes, etc. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
     )
 
     planetary_events = autogen.AssistantAgent(
@@ -394,7 +417,9 @@ def get_agents():
         llm_config=gpt4_config,
         system_message="Planetary_events. You are responsible for simulating planetary events over the simulation round. "
                        "These events can be things like earthquakes, volcanos, etc. "
-                       "The frequency of planetary events should resemble those of Earth."
+                       "The frequency of planetary events should resemble those of Earth. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
     )
 
     climate = autogen.AssistantAgent(
@@ -402,7 +427,24 @@ def get_agents():
         llm_config=gpt4_config,
         system_message="Climate. You are responsible for simulating the climate changes and events over the simulation period. "
                        "Unlike weather, climate changes can persist across simulations. "
-                       "Make sure to get any information about the current climate from the history at the start of the simulation."
+                       "Make sure to get any information about the current climate from the history at the start of the simulation. "
+                       "It is important to consider the randomness of this simulation and utilize random numbers ONLY WHEN APPROPRIATE! "
+                       "The Executor can provide a random number from a distribution of interest. "
+    )
+
+    historian = autogen.AssistantAgent(
+        name="Historian",
+        llm_config=gpt4_config,
+        system_message="Historian. You are responsible for documenting the history of each simulation round in detail. "
+                       "You will document every relevant detail of a simulation round including which lifeforms are "
+                       "living and how many of each are living. You may also document details of the planet as they may "
+                       "play a role in future evolution and survival of lifeforms. Your role is to take the summaries of "
+                       "every planetary event (single cell organism, climate, etc) and generate a comprehensive and pithy "
+                       "summary of the planet. This summary will be used for future simulations and therefore much contain "
+                       "all necessary information. "
+                       "This summary is passed to the Executor who will write this history to a file. This step is critical. "
+                       "At the start of the simulation you will interact with and summarize the current state of the planet "
+                       "based on the last five rounds of simluation. This is critical for beginning the simulation!"
     )
 
     planner = autogen.AssistantAgent(
@@ -420,8 +462,7 @@ def get_agents():
                        "Every time a new lifeform is created, ask the Executor to save it."
                        "It is critical that all of these agents communicate so that they can fully simulate the interaction of all these elements on the planet. "
                        "If you need to introduce any randomness into the simulation, ask the executor for random draws from the appropriate distribution. "
-                       "At the start of the simulation, you will need to load the history of the simulation as well as the planet information. "
-                       "At the end of the simulation round, gather summmaries from all the other agents and ask the Executor to write a detailed summary of the round and the state of the planet and organisms at the end to the history. "
+                       "At the end of the simulation round, gather summmaries from all the other agents and ask the Historian to write a detailed summary of the round and the state of the planet and organisms at the end to the history. "
                        "This includes the names of the organisms, the numbers of the organisms living, the locations, climate, and any other relevant information. "
                        "Make you sure the Executor saves this information. "
                        "Explain the plan first. Be clear which step is performed by which agent. "
@@ -434,26 +475,26 @@ def get_agents():
         function_map={
             #"search": googleit,
             #"scrape_url": scraper,
-            "generate_image": generate_image,
+            "generate_image_and_save": generate_image_and_save,
             "save_history": save_history,
-            "load_history": load_history,
+            #"load_history": load_history,
             "random_integer": random_integer,
             "random_gaussian": random_gaussian,
             "random_exponential": random_exponential,
             "random_poisson": random_poisson,
             "random_binomial": random_binomial,
-            "save_lifeform": save_lifeform,
+            #"save_lifeform": save_lifeform,
             "load_lifeform": load_lifeform,
-            "get_planet_info": get_planet_info
+            #"get_planet_info": get_planet_info
         },
         code_execution_config=False,
         llm_config=executor_config,
-        system_message="When needing to get a random number, generate images, save or load lifeform information, load the history or save the summary of the current simulation round, use the tools at your disposal. ",
+        system_message="When needing to get a random number, generate images, save or load lifeform information use the tools at your disposal. ",
         description="Capable of using helpful tools that can perform necessary actions during the simulation."
     )
 
     return [user_proxy, stop_signaler, single_cell, multi_cell_simple, multi_cell_complex, weather,
-            planetary_events, climate, planner, executor]
+            planetary_events, climate, historian, planner, executor]
 
 @dataclass
 class ExecutorGroupchat(GroupChat):

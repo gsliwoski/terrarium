@@ -1,0 +1,5 @@
+Name: Protocellus Primordia
+Taxonomy: Domain: Protozoa; Kingdom: Protista
+Description: Protocellus Primordia thrives in high-temperature, mineral-rich water, absorbing nutrients directly from the surrounding environment. It replicates via a rudimentary form of binary fission. Approximately 1-2 micrometers in diameter, these protocells exhibit a simple cell membrane enveloping RNA strands and basic metabolic machinery.
+Image filename: assets/protocellus_primordia_Cq9cG.png
+
