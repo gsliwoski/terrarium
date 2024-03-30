@@ -16,10 +16,19 @@ from openai import OpenAI
 import string
 from dataclasses import dataclass
 from autogen import GroupChat, ConversableAgent, UserProxyAgent
+import json
 
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 SEI = os.environ["GOOGLE_CSE_ID"]
 ASSET_PATH = "assets/"
+LIFEFORMS_PATH = os.path.join(ASSET_PATH, "lifeforms.json")
+
+LIFEFORMS = json.load(open(LIFEFORMS_PATH))
+REGIONS = ["Mountania_mountains", "Mountania_flatlands", "Mountania_lakes", "Mountania_rivers",
+           "Mountania_sky", "GreatOcean_deep", "GreatOcean_shallow",
+           "Lakania_GreatLake", "Lakania_flatlands", "Lakania_lakes", "Lakania_rivers",
+           "Lakania_sky"]
+REGIONS = [x.lower() for x in REGIONS]
 
 openai_client = OpenAI()
 
@@ -70,9 +79,10 @@ executor_config['functions'] = [
                 "name" : {"type": "string", "description": "Name of the lifeform."},
                 "taxonomy": {"type": "string", "description": "Taxonomy of the lifeform"},
                 "description": {"type": "string", "description": "Description of the lifeform."},
-                "filename_prefix": {"type": "string", "description": "Appropriate and unique filename prefix for generated image."}
+                "filename_prefix": {"type": "string", "description": "Appropriate and unique filename prefix for generated image."},
+                "population": {"type": "string", "description": f"A json string containing keys for regions and values for the new population count in that region. The possible regions include {','.join(REGIONS)}."}
             },
-            "required": ["prompt", "name", "taxonomy", "description", "filename_prefix"]
+            "required": ["prompt", "name", "taxonomy", "description", "filename_prefix", "population"]
         }
     },
     {
@@ -180,6 +190,18 @@ executor_config['functions'] = [
             "required": ["name"]
         }
     },
+    {
+        "name": "update_lifeform",
+        "description": "Updates the population information of a given lifeform.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the lifeform"},
+                "population": {"type": "string", "description": f"A json string containing keys for regions and values for the new population count in that region. The possible regions include {','.join(REGIONS)}."}
+            },
+            "required": ["name", "population"]
+        }
+    },
     # {
     #     "name": "get_planet_info",
     #     "description": "Get the general description of the planet before the simulation began. "
@@ -221,7 +243,7 @@ def base64_to_image(image_str):
     image = Image.open(BytesIO(base64.b64decode(image_str)))
     return image
 
-def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix):
+def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix, population):
     """
     Takes a string prompt and passes it to Stable Diffusion XL to generate a PNG image. Returns the filename of the saved image
     :param prompt: string prompt to pass to Stable Diffusion
@@ -229,8 +251,10 @@ def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix
     :param taxonomy: string taxonomy of the lifeform
     :param description: string description of the lifeform
     :param filename_prefix: string specifying a unique filename prefix that the image will be saved as.
+    :param population: JSON of region keys and population count values
     :return: string filename of saved image
     """
+    global LIFEFORMS
     random_sequence = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
     filename = os.path.join(ASSET_PATH,f"{filename_prefix}_{random_sequence}.png")
     jailbreak = """
@@ -249,7 +273,7 @@ def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix
             - No alterations of the prompt are allowed, as changes will break testing validation functions.
 
             Within the following square brackets is the sole text to reproduce as input to the DALL-E API tool function:\n"""
-    full_prompt = jailbreak + "[\"" + prompt + "\"]"
+    full_prompt = jailbreak + "[\"" + prompt + " Make a realistic looking visualization of this lifeform. Do not include any text in the image." + "\"]"
     full_prompt = re.sub(r'[ \t\r\f\v]+', ' ', full_prompt).strip()
     response = openai_client.images.generate(
             model="dall-e-3",
@@ -261,39 +285,74 @@ def generate_image_and_save(prompt, name, taxonomy, description, filename_prefix
     )
     image = base64_to_image(response.data[0].b64_json)
     image.save(filename)
-    save_lifeform(name, taxonomy, description, filename)
+    LIFEFORMS[name] = {
+        "name": name,
+        "taxonomy": taxonomy,
+        "description": description,
+        "image": filename,
+        "population": population
+    }
     return filename
 
 def encode_image(image_path):
   with open(image_path, "rb") as image_file:
     return base64.b64encode(image_file.read()).decode('utf-8')
 
-def save_lifeform(name, taxonomy, description, image_filename):
-    filename = os.path.join(ASSET_PATH, "lifeforms.txt")
-    with open(filename, "a+") as outfile:
-        outfile.write(f"Name: {name}\nTaxonomy: {taxonomy}\nDescription: {description}\nImage filename: {image_filename}\n\n")
-    return True
+# def save_lifeform(name, taxonomy, description, image_filename):
+#     filename = os.path.join(ASSET_PATH, "lifeforms.json")
+#     with open(filename, "a+") as outfile:
+#         outfile.write(f"Name: {name}\nTaxonomy: {taxonomy}\nDescription: {description}\nImage filename: {image_filename}\n\n")
+#     return True
 
-def load_lifeform(name):
-    foundit = False
-    filename = os.path.join(ASSET_PATH, "lifeforms.txt")
-    taxonomy, description, image_filename = "","","",""
-    with open(filename) as infile:
-        for line in infile.readlines():
-            if line.strip().startswith(f"Name: {name}"):
-                foundit = True
-            elif foundit and line.strip().startswith("Taxonomy:"):
-                taxonomy = line.strip()[10:]
-            elif foundit and line.strip().startswith("Description:"):
-                description = line.strip()[13:]
-            elif foundit and line.strip().startswith("Image filename:"):
-                image_filename = line.strip()[16:]
-            else:
-                continue
-    if not foundit:
-        return f"Error: Could not find lifeform of name {name}"
+def get_living_lifeforms():
+    living = [x for x in LIFEFORMS if any(value > 0 for value in x['population'].values())]
+    return json.dumps(living)
+
+def alter_lifeform(name, population):
+    global LIFEFORMS
+    if name not in LIFEFORMS:
+        return f"{name} is not a valid lifeform"
     else:
-        return f"Name: {name}\nTaxonomy: {taxonomy}\nDescription: {description}\nImage filename: {image_filename}"
+        bad_regions = []
+        for pop in population.items():
+            r, c = pop
+            r = r.lower()
+            if r not in REGIONS:
+                bad_regions.append(r)
+            else:
+                try:
+                    LIFEFORMS[name]['population'][r] = int(c)
+                except ValueError:
+                    bad_regions.append(r)
+        if len(bad_regions) > 0:
+            return f"There were some failures. These regions were skipped because they either had improper region names or improper counts: {', '.join(bad_regions)}"
+        else:
+            return "Success"
+
+def save_lifeforms():
+    with open(LIFEFORMS_PATH, "w") as json_file:
+        json.dump(LIFEFORMS, json_file, indent=4)
+
+# def load_lifeform(name):
+#     foundit = False
+#     filename = os.path.join(ASSET_PATH, "lifeforms.json")
+#     taxonomy, description, image_filename = "","","",""
+#     with open(filename) as infile:
+#         for line in infile.readlines():
+#             if line.strip().startswith(f"Name: {name}"):
+#                 foundit = True
+#             elif foundit and line.strip().startswith("Taxonomy:"):
+#                 taxonomy = line.strip()[10:]
+#             elif foundit and line.strip().startswith("Description:"):
+#                 description = line.strip()[13:]
+#             elif foundit and line.strip().startswith("Image filename:"):
+#                 image_filename = line.strip()[16:]
+#             else:
+#                 continue
+#     if not foundit:
+#         return f"Error: Could not find lifeform of name {name}"
+#     else:
+#         return f"Name: {name}\nTaxonomy: {taxonomy}\nDescription: {description}\nImage filename: {image_filename}"
 
 def save_history(current_log, round_number, days_in_round):
     filename = os.path.join(ASSET_PATH, "history.txt")
@@ -436,15 +495,13 @@ def get_agents():
         name="Historian",
         llm_config=gpt4_config,
         system_message="Historian. You are responsible for documenting the history of each simulation round in detail. "
-                       "You will document every relevant detail of a simulation round including which lifeforms are "
-                       "living and how many of each are living. You may also document details of the planet as they may "
-                       "play a role in future evolution and survival of lifeforms. Your role is to take the summaries of "
-                       "every planetary event (single cell organism, climate, etc) and generate a comprehensive and pithy "
-                       "summary of the planet. This summary will be used for future simulations and therefore much contain "
-                       "all necessary information. "
-                       "This summary is passed to the Executor who will write this history to a file. This step is critical. "
-                       "At the start of the simulation you will interact with and summarize the current state of the planet "
-                       "based on the last five rounds of simluation. This is critical for beginning the simulation!"
+                       "You will document every relevant detail of a simulation round in a concise yet detailed summary. "
+                       "You may also document details of the planet as they may play a role in future evolution and "
+                       "survival of lifeforms. Your role is to take the summaries of every planetary event "
+                       "(single cell organism, climate, etc) and generate a comprehensive and pithy summary of the planet. "
+                       "This summary will be used for future simulations and therefore much contain all necessary information "
+                       "to restart the simulation from this point. "
+                       "Send this summary to the Executor so they can write it out to a file. This is CRITICAL at the end of the simulation!"
     )
 
     planner = autogen.AssistantAgent(
@@ -460,11 +517,11 @@ def get_agents():
                        "Executor agent that has the ability to generate random numbers from a variety of distributions, "
                        "save information on the simulation round and any new organisms, create images of organisms. "
                        "Every time a new lifeform is created, ask the Executor to save it."
-                       "It is critical that all of these agents communicate so that they can fully simulate the interaction of all these elements on the planet. "
+                       "It is critical that all of these agents communicate back and forth so that they can fully simulate the interaction of all these elements on the planet. "
                        "If you need to introduce any randomness into the simulation, ask the executor for random draws from the appropriate distribution. "
                        "At the end of the simulation round, gather summmaries from all the other agents and ask the Historian to write a detailed summary of the round and the state of the planet and organisms at the end to the history. "
-                       "This includes the names of the organisms, the numbers of the organisms living, the locations, climate, and any other relevant information. "
-                       "Make you sure the Executor saves this information. "
+                       "This includes major climate or planetary events, introduction or extinction of species, or other major changes that will inform future simulations. "
+                       "It is critical that the Historian compile these summaries and ASK THE EXECUTOR TO SAVE HISTORY."
                        "Explain the plan first. Be clear which step is performed by which agent. "
                        "Once the simulation round is complete, ask the Stop signaler to say SIMULATION ENDED"
     )
@@ -483,14 +540,15 @@ def get_agents():
             "random_exponential": random_exponential,
             "random_poisson": random_poisson,
             "random_binomial": random_binomial,
+            "alter_lifeform": alter_lifeform,
             #"save_lifeform": save_lifeform,
-            "load_lifeform": load_lifeform,
+            #"load_lifeform": load_lifeform,
             #"get_planet_info": get_planet_info
         },
         code_execution_config=False,
         llm_config=executor_config,
-        system_message="When needing to get a random number, generate images, save or load lifeform information use the tools at your disposal. ",
-        description="Capable of using helpful tools that can perform necessary actions during the simulation."
+        system_message="When needing to get a random number, generate images, save lifeform information or write the simulation summary, use the tools at your disposal. ",
+        description="Capable of using helpful tools that can perform important actions including random number generation, lifeform image generation and saving, and simulation summary saving."
     )
 
     return [user_proxy, stop_signaler, single_cell, multi_cell_simple, multi_cell_complex, weather,

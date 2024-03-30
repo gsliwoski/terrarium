@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.extend([os.getcwd()]) #TODO: take out before sending
+sys.path.extend([os.getcwd()])
 
 GOOGLE_API_KEY = "INSERT_API_KEY"
 SEI = "INSERT_SEI_KEY"
@@ -36,12 +36,15 @@ def simulate(total_days):
     chat_filename = os.path.join(LOGS_PATH, f"{round_number}_chat_output_{random_sequence}_{current_date}.txt")
     groupchat, manager, user_proxy = agents.initialize()
     planet_information = agents.get_planet_info()
+    populations = agents.get_living_lifeforms()
     message = f"Simulate round number {round_number} for the planet comprising {total_days} days. "
     message += f"The basic planetary information is {planet_information} and the history leading up to the current round of simulation is {history}."
+    message += f"\nThe lifeforms residing on the planet at the start of this simulation are represented in the following JSON, where each lifeform name may have several population counts in different regions: {populations}"
     autogen.runtime_logging.start(logger_type="sqlite", config={"dbname": db_filename})
     user_proxy.initiate_chat(manager, message=message)
     autogen.runtime_logging.stop()
     agents.save_chat(groupchat, chat_filename)
+    agents.save_lifeforms()
     return True
 
 def count_tokens(st, model="openai"):
