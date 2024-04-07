@@ -305,7 +305,7 @@ def encode_image(image_path):
 #     return True
 
 def get_living_lifeforms():
-    living = [x for x in LIFEFORMS if any(value > 0 for value in x['population'].values())]
+    living = [x for x in LIFEFORMS if any(value > 0 for value in json.loads(LIFEFORMS[x]['population']).values())]
     return json.dumps(living)
 
 def alter_lifeform(name, population):
@@ -521,9 +521,8 @@ def get_agents():
                        "If you need to introduce any randomness into the simulation, ask the executor for random draws from the appropriate distribution. "
                        "At the end of the simulation round, gather summmaries from all the other agents and ask the Historian to write a detailed summary of the round and the state of the planet and organisms at the end to the history. "
                        "This includes major climate or planetary events, introduction or extinction of species, or other major changes that will inform future simulations. "
-                       "It is critical that the Historian compile these summaries and ASK THE EXECUTOR TO SAVE HISTORY."
                        "Explain the plan first. Be clear which step is performed by which agent. "
-                       "Once the simulation round is complete, ask the Stop signaler to say SIMULATION ENDED"
+                       "Once the simulation round is complete, ask the executor to save the history and then ask the Stop signaler to say SIMULATION ENDED"
     )
 
     executor = autogen.UserProxyAgent(

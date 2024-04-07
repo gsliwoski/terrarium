@@ -2,4 +2,28 @@
 Total days of round: 0
 For the first time, a concentrated pool of free floating nucleotides in a deep sea hydrothermal vent gave rise to self-replicating RNA.
 This vent is on the ocean floor just off the coast of Mountania near one end of the sprawling mountain range.
+************************* ROUND 1 *****
+Total days in round: 365
+**Terrarium Simulation Round 1 Summary**
+
+**Planet Overview:**
+Terrarium is a planet within the habitable zone, featuring two large land masses named Mountania and Lakania, surrounded by a vast saltwater ocean known as GreatOcean. Mountania is characterized by its mountainous terrain, whereas Lakania is notable for its large freshwater body, GreatLake. The atmosphere and overall planetary conditions closely resemble Earth's, making Terrarium capable of supporting life.
+
+**Life Forms:**
+At the start of Round 1, Terrarium was home to a single known life form, "Aquaphotoreplicator terrariumensis," a single-cell organism thriving in the hydrothermal vents near Mountania.
+
+**Environmental Events:**
+- A significant volcanic eruption on Day 45 introduced new minerals into the ocean, potentially influencing the mutation rates and environmental conditions for local life forms.
+
+**Biological Events and Evolution:**
+- Two mutation attempts were observed among the "Aquaphotoreplicator terrariumensis" populations on Day 90 and Day 270. However, random number outcomes of 34 and 18, respectively, indicated that neither mutation attempt led to a viable new species.
+- Despite the lack of new species emergence, "Aquaphotoreplicator terrariumensis" showed population growth and expanded its presence to other hydrothermal vents across the GreatOcean, indicating a stable and expanding ecological niche.
+
+**Conclusion of Round 1:**
+At the end of Round 1, Terrarium's biosphere remains in its early stages of development, with "Aquaphotoreplicator terrariumensis" as its sole occupant. The volcanic activity and subsequent mutation attempts did not result in speciation, but the foundational single-cell organism demonstrates resilience and adaptability in Terrarium's marine environments. The planet's ecological and environmental conditions remain conducive to life, setting the stage for future evolutionary developments.
+
+**Forward Look:**
+The focus for subsequent rounds will be on monitoring the continued evolution and potential diversification of life on Terrarium, with an emphasis on the emergence of new species and the adaptation of "Aquaphotoreplicator terrariumensis" to changing environmental conditions.
+
+**End of Simulation Round 1. Prepared for Future Simulations.**
 ********************
